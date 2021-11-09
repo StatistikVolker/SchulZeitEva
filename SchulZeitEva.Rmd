@@ -1,0 +1,208 @@
+---
+title: "Evaluation der Schulanfangszeiten an der Schule am Palengarten- Baselineunterschung"
+author: "Volker Holzendorf, Schule mit Herz, Evaluationsgruppe"
+date: 'Stand der Auswertung: 9.11.2021'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include = FALSE}
+# Pakete laden
+require(foreign)
+require(tidyverse)
+require(plotly)
+library(knitr)
+library(rmarkdown)
+library(readr)
+library(stringr)
+###require()
+options(scipen=999)
+mkr.formatnumber<- function(number, decimals= 1){
+  formatC(number,digits=decimals,format="f")
+}
+
+
+# Daten laden
+dfBL <- as.data.frame(read.spss("Daten/T0_Daten_ohneCodes.sav"))
+class(dfBL)
+```
+# Einleitung
+
+Dieser report wertet die Basisuntersuchung der Evaluation der Schulzeiten aus.
+Die untersuchung fand vom ... Juli bis ... Juli 2021 in Form eines Papierfragebogens statt.
+
+# Deskreption des Kollektives
+
+
+
+# Analyse der Chonotypen
+
+Die Chonotypen leiten sich aus dem Eulen-Lerchen-Fragebogen ab. Die Fragen addieren sich zu einer ordinalen Scala auf, die Punktwerte von 13 bis 42 annehmen kann. Je kleiner der Zahlenwert ist, desto eher ist von einer Eule auszugehen. Lerchen habe demtentsprechend höhere Punktwerte auf der Skala.
+
+Das folgende Diagramm zeigt Boxplots der untersucghten 4 Klassenstufen unterteilt nach Mädchen und Jungs. In der Auswertung wurden Kinder, die Kein Geschlecht angegeben haben, nicht berücksichtigt. Ebenso kinder die keiner KLasse zu geordnet werden konnten. Des Weiteren werden nur WErte zwischen 13 und 42 berücksichtigt, da dies der Skalenbereich ist, den die Chronotypskala annehmen kann. Diese Exklusion der Daten folgt der Logik, dass nur sinnvolle und nachvollziehbare Daten auszuwerten sind.
+
+
+```{r include = FALSE}
+dfBL2 <- dfBL %>%
+  filter(klasse < 9999) %>%
+  filter(chronotyp < 43) %>%
+  filter(geschl %in% c("männlich", "weiblich")) %>%
+  mutate(klassef = factor(klasse),
+         klassef2= relevel(klassef, "8"),
+         klassef7= relevel(klassef, "7"),
+         geschlf = factor(geschl),
+         klasse8idx = as.numeric(klasse == 8),
+         alterf = factor(alter),
+         alter14 = as.numeric(alter > 13),
+         alter15 = as.numeric(alter > 14))
+
+```
+
+Damit verbleiben `r dim(dfBL2)[1]` von `r dim(dfBL)[1]` (`r round(dim(dfBL2)[1]/dim(dfBL)[1]*100,1)`%) Kinder in der Analyse. 
+
+```{r, include = FALSE}
+dfBL2plot <- dfBL2 %>%
+  select(chronotyp, klassef, geschlf) %>%
+  mutate(klasex = as.factor(paste("Klasse",klassef,"<br>",geschlf)))
+
+p <- ggplot(dfBL2plot,aes(x=klasex, y=chronotyp, color = geschlf)) + 
+  geom_boxplot(outlier.colour="red", outlier.shape=8,outlier.size=4) +
+  #geom_jitter(shape=16, position=position_jitter(0.2)) +
+  #geom_dotplot(binaxis='y', stackdir='center', dotsize=1,fill = "white") + 
+  theme_classic() +
+  labs(y = "Chronotyp",x = "Klasse", color = "Geschlecht") +
+  scale_y_continuous(breaks = seq(10,42,5),labels = seq(10,42,5)) +
+   scale_color_manual(values = c("darkblue","darkviolet")) +
+  theme(legend.position =  "bottom",
+        axis.text = element_text(size = 12),
+        #axis.text.x = element_blank(),
+        axis.title = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        legend.text = element_text(size = 12)
+        #panel.grid.minor.x = element_line(colour="blue", size=0.5), 
+        #panel.grid.major.x = element_line(colour="red", size=0.75)
+  ) 
+
+  
+p <- ggplotly(p)
+```
+
+```{r echo = FALSE}
+p
+```
+
+Als nächstes sind verschiedene linearen Regressionsmodelle berechnet worden. dabei berechnen wir den Einfluß dder Klasse auf den Chronotyp.
+
+Wir untersuchen folgende These:
+
+Schüler der Klasse 8 haben gegen über Schülern der Klasse 7 einen signifikanten Unterschied im Chronotyp. 
+
+Dies ist die These die dem Beschluss der Schulkonfernezbsschluss zur Verschiebung der Schulzeiten für die 8. und 9. Klasse an der Schule am Palemngarten zu Grunde liegt.
+
+## Modell 1: Unterschiede bezüglich Klassenstufe 8
+
+
+```{r, include= FALSE}
+fit <- glm(chronotyp ~ klassef2 , data = dfBL2)
+fittab <- summary(fit)
+fitci <- as.data.frame(confint(fit)) %>%
+  mutate(class = rownames(.))
+
+fittdf <- as.data.frame(fittab$coefficients) %>%
+  mutate(class = rownames(.))
+fittci <- fittdf %>% left_join(fitci, by = "class") %>%
+  mutate(class = case_when(class == "(Intercept)" ~ "Klasse 8",
+                           class == "klassef26" ~ "Klasse 6",
+                           class == "klassef27" ~ "Klasse 7",
+                           class == "klassef25" ~ "Klasse 5",
+                           TRUE ~ ""
+                           ),
+         mean = ifelse(class != "Klasse 8",fittab$coefficients[1,1] + Estimate, fittab$coefficients[1,1]),
+         CI95L = ifelse(class != "Klasse 8",fittab$coefficients[1,1] + `2.5 %`, fitci[1,1]),
+         CI95U = ifelse(class != "Klasse 8",fittab$coefficients[1,1] + `97.5 %`, fitci[1,2]),
+         string = paste0(mkr.formatnumber(mean,1)," [",mkr.formatnumber(CI95L,1)," to ",mkr.formatnumber(CI95U,1),"]"),
+         pval = ifelse(class != "Klasse 8",mkr.formatnumber(`Pr(>|t|)`,3),"--")
+
+         )
+names(fittci)
+
+fittci2 <- fittci %>% select(Klasse = class, `Estimate [95%-KI]` = string, `P-Value` = pval )
+#fittab$coefficients[1,1] <- Schaätzwert auch mit Konfidenzintervall ausgeben
+
+```
+
+Die folgende Tabelle zeigt die Modellschätzwerte des Chronotyps pro Klassenstufe mit dem 95% Konfidenzintervall an. Zusätzlich ist der P-Wert angegeben. Dieser ist wie folgt zu interpretieren: Ist dieser < 0.05 deutet dies auf einen überzufälligen (signifikanten) Unterschied bezüglich Klassenstufe 8 hin. Es zeigt sich, dass alle Klassenstufen einen anderen Chronotyp hat als Klassenstufe 8 haben. Da die Werte in Klassenstufe 8 geringer sind, sind Schüler:innen der KLassenstufe 8 eher Eulen als Schüler:innen der anderne Klassenstufen.
+
+
+```{r echo = FALSE}
+kable(fittci2)
+```
+
+Es kann mit diesem statistischen Modell **keine Aussage** über den Unterschied zwischen anderen Klassenstufen getätigt werden.
+
+
+
+## Modell 2: Unterschiede bezüglich Klassenstufe 7
+
+```{r, include = FALSE}
+fit <- glm(chronotyp ~ klassef7 , data = dfBL2)
+fittab <- summary(fit)
+fitci <- as.data.frame(confint(fit)) %>%
+  mutate(class = rownames(.))
+
+fittdf <- as.data.frame(fittab$coefficients) %>%
+  mutate(class = rownames(.))
+fittci <- fittdf %>% left_join(fitci, by = "class") %>%
+  mutate(class = case_when(class == "(Intercept)" ~ "Klasse 7",
+                           class == "klassef76" ~ "Klasse 6",
+                           class == "klassef78" ~ "Klasse 8",
+                           class == "klassef75" ~ "Klasse 5",
+                           TRUE ~ ""
+                           ),
+         mean = ifelse(class != "Klasse 7",fittab$coefficients[1,1] + Estimate, fittab$coefficients[1,1]),
+         CI95L = ifelse(class != "Klasse 7",fittab$coefficients[1,1] + `2.5 %`, fitci[1,1]),
+         CI95U = ifelse(class != "Klasse 7",fittab$coefficients[1,1] + `97.5 %`, fitci[1,2]),
+         string = paste0(mkr.formatnumber(mean,1)," [",mkr.formatnumber(CI95L,1)," to ",mkr.formatnumber(CI95U,1),"]"),
+         pval = ifelse(class != "Klasse 7",mkr.formatnumber(`Pr(>|t|)`,3),"--")
+
+         )
+names(fittci)
+
+fittci2 <- fittci %>% select(Klasse = class, `Estimate [95%-KI]` = string, `P-Value` = pval )
+#fittab$coefficients[1,1] <- Schaätzwert auch mit Konfidenzintervall ausgeben
+
+```
+
+
+```{r, echo = FALSE}
+kable(fittci2)
+```
+
+
+```{r, echo = FALSE}
+fit <- glm(chronotyp ~ klassef + geschlf + klassef:geschlf, data = dfBL2)
+fittab <- summary(fit)
+
+#kable(fittab)
+
+
+
+
+fit <- glm(chronotyp ~ alterf + geschlf + alterf:geschlf, data = dfBL2)
+summary(fit)
+
+fit <- glm(chronotyp ~ alter14  + geschlf, data = dfBL2)
+summary(fit)
+fit <- glm(chronotyp ~ alter15  + geschlf, data = dfBL2)
+summary(fit)
+
+```
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
